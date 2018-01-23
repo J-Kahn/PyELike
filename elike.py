@@ -196,7 +196,7 @@ class elspec:
 			print(self.mdiff)
 			if it > maxit:
 				self.mdiff = 0
-			#initpar = par
+			initpar = par
 
 		self.theta = par
 
