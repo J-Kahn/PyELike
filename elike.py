@@ -172,6 +172,12 @@ class elspec:
 	def gmm_iteration(self, initpar, method = 'Nelder-Mead', minimizer_kwargs = {}):
 		if method == 'basinhopping':
 			self.estim = opt.basinhopping(self.gmm_obj, initpar, minimizer_kwargs = {})
+		elif method == 'Newton-CG':
+			self.estim = opt.minimize(self.gmm_obj, x0 = initpar, method = 'Newton-CG', jac = self.gmm_grad, hess = self.gmm_hess)       
+		elif method == 'BFGS':
+			self.estim = opt.minimize(self.gmm_obj, x0 = initpar, method = 'BFGS', jac = self.gmm_grad, hess = self.gmm_hess) 
+		elif method == 'root':
+			self.estim = opt.root(self.gmm_grad, x0 = initpar, jac = self.gmm_hess)
 		else:
 			self.estim = opt.minimize(self.gmm_obj, initpar, method = method)
 		par = self.estim.x
@@ -204,9 +210,20 @@ class elspec:
 		self.mv(par)
 		moe = np.mean(self.res, axis = 0)
 		return np.dot(np.dot(moe.T, self.W), moe)
+
+	def gmm_grad(self, par):
+		m = self.mvm(par)
+		G = self.fullgrad(par)
+		gwm    = np.dot(np.dot(G.T, self.W), m)        
+		return gwm 
+
+	def gmm_hess(self, par):
+		G = self.fullgrad(par)
+		gwg = np.dot(np.dot(G.T, self.W), G)
+		return gwg
     
 	def gmm_var(self, par, efficient = False):
-		G = jacobian(self.mvm,self.theta,4,0.5,2)
+		G = self.fullgrad(self.theta)            
 		gwginv = np.linalg.inv(np.dot(np.dot(G.T, self.W), G))
 		if efficient:
 			self.var = gwginv / float(self.data.shape[0])
@@ -222,7 +239,7 @@ class elspec:
 			invpsi = self.W
 		else:
 			omega = self.get_var(par)
-			G = jacobian(self.mvm,self.theta,4,0.5,2)
+			G = fullgrad(self.theta)
 			peye = np.eye(G.shape[0])
 			gwginv = np.linalg.inv(np.dot(np.dot(G.T, self.W), G))
 			gwc = np.dot(np.dot(np.dot(G, gwginv), G.T), self.W)
@@ -270,6 +287,13 @@ class elspec:
 
 		self.res = self.moments(par, self.data)
 
+	def fullgrad(self, par):
+		if self.grad == "":        
+			G = jacobian(self.mvm,par,4,0.5,2)
+		else:
+			G = self.grad(par, self.data)
+		return G
+        
 	def mvm(self, par):
 
 		return np.mean(self.moments(par, self.data),0)
@@ -305,5 +329,25 @@ class elspec:
 		for i in range(0,x.shape[0]):
 
 			pvec[i] = self.ecdfi(x[i], par)
+
+		return pvec
+    
+	def ecdfivar(self, x, var, par = ''):
+		if par == '':
+			par = self.theta
+
+		xer = self.gom(par)/float(self.data.shape[0]) * np.array(self.data[var]<=x)
+		return np.sum(xer)
+    
+	def ecdfivarquick(self, x, var, p, par = ''):
+		xer = p * np.array(self.data[var]<=x)
+		return np.sum(xer)
+    
+	def ecdfvar(self, values, var, par = ''):
+		pvec = np.zeros(values.shape)
+		p = self.pv(par)
+		for i in range(0,values.shape[0]):
+
+			pvec[i] = self.ecdfivarquick(values[i], var, p, par)
 
 		return pvec
